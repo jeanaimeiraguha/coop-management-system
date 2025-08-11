@@ -1,15 +1,16 @@
 import React from "react";
 import { useForm } from "react-hook-form";
-import axios from "axios";
+import api from "../api";
 
 export default function Login() {
   const { register, handleSubmit, formState: { errors } } = useForm();
 
-  const onSubmit = async (data) => {
+  const onSubmit = async data => {
     try {
-      const res = await axios.post("http://localhost:3000/members/login", data);
+      const res = await api.post("/members/login", data);
       localStorage.setItem("token", res.data.token);
       localStorage.setItem("memberName", res.data.member.name);
+      localStorage.setItem("memberEmail", res.data.member.email);
       window.location.href = "/dashboard";
     } catch (err) {
       alert(err.response?.data?.message || "Login failed");
@@ -17,7 +18,7 @@ export default function Login() {
   };
 
   return (
-    <div className="max-w-md mx-auto mt-20 p-8 border rounded shadow">
+    <div className="max-w-md mx-auto mt-20 p-6 border rounded shadow">
       <h2 className="text-2xl mb-6 text-center font-bold">Member Login</h2>
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
         <input
@@ -43,12 +44,6 @@ export default function Login() {
           Login
         </button>
       </form>
-      <p className="mt-4 text-center">
-        Don't have an account?{" "}
-        <a href="/register" className="text-blue-600 underline">
-          Register here
-        </a>
-      </p>
     </div>
   );
 }

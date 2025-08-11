@@ -1,45 +1,84 @@
 import React from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+
 import Login from "./Components/Login";
-// import Register from "./components/Register";
-import Register from "./Components/Register";
-// import Dashboard from "./components/Dashboard";
 import Dashboard from "./Components/Dashboard";
-// import Contributions from "./components/Contributions";
 import Contributions from "./Components/Contributions";
-// import Loans from "./components/Loans";
 import Loans from "./Components/Loans";
-// import Repayments from "./components/Repayments";
-import  Repayments from "./Components/Repayments"
+import Repayments from "./Components/Repayments";
+import AdminLoanApproval from "./components/AdminLoanApproval";
+import ProfitSummary from "./Components/ProfitSummary";
 
-function App() {
-  // Simple auth check via token in localStorage
+// A simple auth helper: checks for token in localStorage
+function RequireAuth({ children }) {
   const token = localStorage.getItem("token");
+  if (!token) {
+    return <Navigate to="/" replace />;
+  }
+  return children;
+}
 
+export default function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={token ? <Navigate to="/dashboard" /> : <Login />} />
-        <Route path="/register" element={<Register />} />
+        <Route path="/" element={<Login />} />
+
+        {/* Protected routes */}
         <Route
           path="/dashboard"
-          element={token ? <Dashboard /> : <Navigate to="/" />}
+          element={
+            <RequireAuth>
+              <Dashboard />
+            </RequireAuth>
+          }
         />
         <Route
           path="/contributions"
-          element={token ? <Contributions /> : <Navigate to="/" />}
+          element={
+            <RequireAuth>
+              <Contributions />
+            </RequireAuth>
+          }
         />
         <Route
           path="/loans"
-          element={token ? <Loans /> : <Navigate to="/" />}
+          element={
+            <RequireAuth>
+              <Loans />
+            </RequireAuth>
+          }
         />
         <Route
-          path="/repayments/:loanId"
-          element={token ? <Repayments /> : <Navigate to="/" />}
+          path="/loans/:loanId/repayments"
+          element={
+            <RequireAuth>
+              <Repayments />
+            </RequireAuth>
+          }
         />
+
+        {/* Admin only routes */}
+        <Route
+          path="/loans/pending"
+          element={
+            <RequireAuth>
+              <AdminLoanApproval />
+            </RequireAuth>
+          }
+        />
+        <Route
+          path="/profits"
+          element={
+            <RequireAuth>
+              <ProfitSummary />
+            </RequireAuth>
+          }
+        />
+
+        {/* Fallback for unknown routes */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
   );
 }
-
-export default App;

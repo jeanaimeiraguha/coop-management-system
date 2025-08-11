@@ -1,22 +1,14 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
-import { useParams } from "react-router-dom";
+import api from "../api";
 import { useForm } from "react-hook-form";
 
-const API_URL = "http://localhost:3000";
-
-export default function Repayments() {
-  const { loanId } = useParams();
+export default function Repayments({ loanId }) {
   const [repayments, setRepayments] = useState([]);
-  const { register, handleSubmit, reset, formState: { errors } } = useForm();
-
-  const token = localStorage.getItem("token");
+  const { register, handleSubmit, reset } = useForm();
 
   const fetchRepayments = async () => {
     try {
-      const res = await axios.get(`${API_URL}/repayments/${loanId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await api.get(`/loans/${loanId}/repayments`);
       setRepayments(res.data);
     } catch {
       alert("Failed to load repayments");
@@ -24,14 +16,13 @@ export default function Repayments() {
   };
 
   useEffect(() => {
-    fetchRepayments();
+    if (loanId) fetchRepayments();
   }, [loanId]);
 
-  const onSubmit = async (data) => {
+  const onSubmit = async data => {
     try {
-      await axios.post(`${API_URL}/repayments`, { loanId, ...data }, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      await api.post(`/loans/${loanId}/repayments`, data);
+      alert("Repayment recorded");
       reset();
       fetchRepayments();
     } catch {
@@ -40,10 +31,10 @@ export default function Repayments() {
   };
 
   return (
-    <div className="max-w-3xl mx-auto mt-10 p-6">
-      <h2 className="text-2xl font-bold mb-6">Repayments for Loan #{loanId}</h2>
+    <div className="max-w-3xl mx-auto mt-6 p-6 border rounded">
+      <h3 className="text-xl font-semibold mb-4">Repayments</h3>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="mb-8 max-w-sm space-y-4">
+      <form onSubmit={handleSubmit(onSubmit)} className="mb-6 max-w-sm space-y-4">
         <input
           type="number"
           step="0.01"
@@ -51,11 +42,9 @@ export default function Repayments() {
           {...register("amount", { required: true, min: 0.01 })}
           className="w-full p-2 border rounded"
         />
-        {errors.amount && <p className="text-red-500">Enter a valid amount</p>}
-
         <button
           type="submit"
-          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded"
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
         >
           Add Repayment
         </button>
@@ -64,21 +53,19 @@ export default function Repayments() {
       <table className="w-full border-collapse border border-gray-300">
         <thead>
           <tr className="bg-gray-100">
-            <th className="border border-gray-300 p-2 text-left">Date</th>
+            <th className="border border-gray-300 p-2">Date</th>
             <th className="border border-gray-300 p-2 text-right">Amount</th>
           </tr>
         </thead>
         <tbody>
-          {repayments.map((r) => (
+          {repayments.map(r => (
             <tr key={r.id}>
               <td className="border border-gray-300 p-2">{new Date(r.date).toLocaleDateString()}</td>
               <td className="border border-gray-300 p-2 text-right">${r.amount.toFixed(2)}</td>
             </tr>
           ))}
           {repayments.length === 0 && (
-            <tr>
-              <td colSpan="2" className="text-center p-4">No repayments found.</td>
-            </tr>
+            <tr><td colSpan={2} className="text-center p-4">No repayments found.</td></tr>
           )}
         </tbody>
       </table>
