@@ -1,84 +1,62 @@
 import React from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider, AuthContext } from "./contexts/AuthContext";
 
 import Login from "./Components/Login";
+import Register from "./Components/Register";
 import Dashboard from "./Components/Dashboard";
 import Contributions from "./Components/Contributions";
 import Loans from "./Components/Loans";
-import Repayments from "./Components/Repayments";
-import AdminLoanApproval from "./components/AdminLoanApproval";
-import ProfitSummary from "./Components/ProfitSummary";
+import LoanApproval from "./Components/LoanApproval";
 
-// A simple auth helper: checks for token in localStorage
-function RequireAuth({ children }) {
-  const token = localStorage.getItem("token");
-  if (!token) {
-    return <Navigate to="/" replace />;
-  }
-  return children;
+function PrivateRoute({ children }) {
+  const { user } = React.useContext(AuthContext);
+  return user ? children : <Navigate to="/login" replace />;
 }
 
 export default function App() {
   return (
-    <Router>
-      <Routes>
-        <Route path="/" element={<Login />} />
+    <AuthProvider>
+      <Router>
+        <Routes>
+          <Route path="/" element={<Navigate to="/login" replace />} />
+          <Route path="/login" element={<Login />} />
+          <Route path="/register" element={<Register />} />
 
-        {/* Protected routes */}
-        <Route
-          path="/dashboard"
-          element={
-            <RequireAuth>
-              <Dashboard />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/contributions"
-          element={
-            <RequireAuth>
-              <Contributions />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/loans"
-          element={
-            <RequireAuth>
-              <Loans />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/loans/:loanId/repayments"
-          element={
-            <RequireAuth>
-              <Repayments />
-            </RequireAuth>
-          }
-        />
-
-        {/* Admin only routes */}
-        <Route
-          path="/loans/pending"
-          element={
-            <RequireAuth>
-              <AdminLoanApproval />
-            </RequireAuth>
-          }
-        />
-        <Route
-          path="/profits"
-          element={
-            <RequireAuth>
-              <ProfitSummary />
-            </RequireAuth>
-          }
-        />
-
-        {/* Fallback for unknown routes */}
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Router>
+          <Route
+            path="/dashboard"
+            element={
+              <PrivateRoute>
+                <Dashboard />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/contributions"
+            element={
+              <PrivateRoute>
+                <Contributions />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/loans"
+            element={
+              <PrivateRoute>
+                <Loans />
+              </PrivateRoute>
+            }
+          />
+          <Route
+            path="/admin-loan-approval"
+            element={
+              <PrivateRoute>
+                <LoanApproval />
+              </PrivateRoute>
+            }
+          />
+        </Routes>
+      </Router>
+    </AuthProvider>
   );
 }
