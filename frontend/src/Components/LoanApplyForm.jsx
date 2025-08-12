@@ -1,9 +1,11 @@
-// src/components/ContributionForm.jsx
+// src/components/LoanApplyForm.jsx
 import React, { useState } from "react";
 import api from "../services/api";
 
-export default function ContributionForm({ onAdded }) {
+export default function LoanApplyForm({ onApplied }) {
   const [amount, setAmount] = useState("");
+  const [termMonths, setTermMonths] = useState("");
+  const [interestRate, setInterestRate] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
 
@@ -11,12 +13,19 @@ export default function ContributionForm({ onAdded }) {
     e.preventDefault();
     setError("");
     try {
-      await api.post("/contributions", { amount: Number(amount), note });
+      await api.post("/loans", {
+        amount: Number(amount),
+        termMonths: Number(termMonths),
+        interestRate: Number(interestRate),
+        note,
+      });
       setAmount("");
+      setTermMonths("");
+      setInterestRate("");
       setNote("");
-      if (onAdded) onAdded();
+      if (onApplied) onApplied();
     } catch (err) {
-      setError(err.response?.data?.message || "Failed to add contribution");
+      setError(err.response?.data?.message || "Loan application failed");
     }
   }
 
@@ -30,10 +39,29 @@ export default function ContributionForm({ onAdded }) {
       )}
       <input
         type="number"
-        placeholder="Amount"
+        placeholder="Amount (RWF)"
         value={amount}
         onChange={(e) => setAmount(e.target.value)}
         min="1"
+        required
+        className="w-full p-3 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
+      />
+      <input
+        type="number"
+        placeholder="Term (months)"
+        value={termMonths}
+        onChange={(e) => setTermMonths(e.target.value)}
+        min="1"
+        required
+        className="w-full p-3 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
+      />
+      <input
+        type="number"
+        placeholder="Interest Rate (%)"
+        value={interestRate}
+        onChange={(e) => setInterestRate(e.target.value)}
+        min="0"
+        step="0.01"
         required
         className="w-full p-3 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
       />
@@ -48,7 +76,7 @@ export default function ContributionForm({ onAdded }) {
         type="submit"
         className="w-full bg-indigo-600 text-white p-3 rounded hover:bg-indigo-700 transition"
       >
-        Add Contribution
+        Apply for Loan
       </button>
     </form>
   );

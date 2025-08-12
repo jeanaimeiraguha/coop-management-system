@@ -1,68 +1,93 @@
-import React from "react";
-import { useForm } from "react-hook-form";
-import axios from "axios";
+// src/pages/Register.jsx
+import React, { useState } from "react";
+import api from "../services/api";
+import { useNavigate, Link } from "react-router-dom";
 
 export default function Register() {
-  const { register, handleSubmit, formState: { errors } } = useForm();
+  const [form, setForm] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    password: "",
+  });
+  const [error, setError] = useState("");
+  const navigate = useNavigate();
 
-  const onSubmit = async (data) => {
+  async function handleSubmit(e) {
+    e.preventDefault();
+    setError("");
     try {
-      await axios.post("http://localhost:3000/members/register", data);
-      alert("Registration successful! Please login.");
-      window.location.href = "/";
+      await api.post("/members/register", form);
+      navigate("/login");
     } catch (err) {
-      alert(err.response?.data?.message || "Registration failed");
+      setError(err.response?.data?.message || "Registration failed");
     }
-  };
+  }
+
+  function handleChange(e) {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  }
 
   return (
-    <div className="max-w-md mx-auto mt-20 p-8 border rounded shadow">
-      <h2 className="text-2xl mb-6 text-center font-bold">Member Registration</h2>
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <div className="flex justify-center items-center h-screen bg-gradient-to-r from-indigo-600 to-purple-700">
+      <form
+        onSubmit={handleSubmit}
+        className="bg-white p-8 rounded-lg shadow-md w-full max-w-md space-y-5"
+      >
+        <h2 className="text-3xl font-bold text-center text-indigo-700">
+          Create Account
+        </h2>
+        {error && (
+          <p className="text-red-600 text-center font-semibold">{error}</p>
+        )}
         <input
           type="text"
+          name="name"
           placeholder="Full Name"
-          {...register("name", { required: true })}
-          className="w-full p-2 border rounded"
+          value={form.name}
+          onChange={handleChange}
+          required
+          className="w-full p-3 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
-        {errors.name && <p className="text-red-500">Name is required</p>}
-
         <input
           type="email"
+          name="email"
           placeholder="Email"
-          {...register("email", { required: true })}
-          className="w-full p-2 border rounded"
+          value={form.email}
+          onChange={handleChange}
+          required
+          className="w-full p-3 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
-        {errors.email && <p className="text-red-500">Email is required</p>}
-
         <input
           type="tel"
+          name="phone"
           placeholder="Phone Number"
-          {...register("phone")}
-          className="w-full p-2 border rounded"
+          value={form.phone}
+          onChange={handleChange}
+          className="w-full p-3 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
-
         <input
           type="password"
+          name="password"
           placeholder="Password"
-          {...register("password", { required: true, minLength: 6 })}
-          className="w-full p-2 border rounded"
+          value={form.password}
+          onChange={handleChange}
+          required
+          className="w-full p-3 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-indigo-500"
         />
-        {errors.password && <p className="text-red-500">Password must be at least 6 characters</p>}
-
         <button
           type="submit"
-          className="w-full bg-green-600 text-white p-2 rounded hover:bg-green-700"
+          className="w-full bg-indigo-600 text-white p-3 rounded hover:bg-indigo-700 transition"
         >
           Register
         </button>
+        <p className="text-center">
+          Already have an account?{" "}
+          <Link to="/login" className="text-indigo-600 hover:underline">
+            Login here
+          </Link>
+        </p>
       </form>
-      <p className="mt-4 text-center">
-        Already have an account?{" "}
-        <a href="/" className="text-blue-600 underline">
-          Login here
-        </a>
-      </p>
     </div>
   );
 }
