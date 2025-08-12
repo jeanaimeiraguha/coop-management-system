@@ -1,6 +1,5 @@
 import React, { createContext, useState, useEffect } from "react";
-// Correct import for jwt-decode for Vite + React
-import jwtDecode from "jwt-decode";
+import api from "../services/api";
 
 export const AuthContext = createContext();
 
@@ -8,30 +7,29 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      try {
-        // Decode token properly
-        const decoded = jwtDecode(token);
-        // Assume token contains user info like id and email
-        setUser({ id: decoded.id, email: decoded.email });
-      } catch (error) {
-        console.error("Invalid token", error);
-        localStorage.removeItem("token");
-        setUser(null);
+    async function decodeToken() {
+      const token = localStorage.getItem("token");
+      if (token) {
+        try {
+          const jwtDecode = (await import("jwt-decode")).default;
+          const data = jwtDecode(token);
+          setUser({ id: data.id, email: data.email, name: data.name });
+        } catch (e) {
+          console.error("Invalid token", e);
+          localStorage.removeItem("token");
+          setUser(null);
+        }
       }
     }
+    decodeToken();
   }, []);
 
   async function login(email, password) {
-    // Call your API login here and get token + user info
-    // Example with axios instance 'api':
-    // const res = await api.post('/members/login', { email, password });
-    // localStorage.setItem('token', res.data.token);
-    // setUser(res.data.member);
-    // return res.data.member;
-
-    throw new Error("Implement login logic here");
+    const res = await api.post("/members/login", { email, password });
+    const { token, member } = res.data;
+    localStorage.setItem("token", token);
+    setUser(member);
+    return member;
   }
 
   function logout() {
