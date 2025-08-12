@@ -1,32 +1,28 @@
+// src/components/Navbar.jsx
 import { Link, useNavigate } from "react-router-dom";
 
 export default function Navbar() {
   const navigate = useNavigate();
-  const token = localStorage.getItem("token");
 
-  const handleLogout = () => {
+  const logout = () => {
     localStorage.removeItem("token");
     navigate("/login");
   };
 
   return (
-    <nav className="bg-blue-600 text-white px-6 py-3 flex justify-between items-center shadow-md">
-      <h1 className="text-xl font-bold">Cooperative System</h1>
-      <div className="flex items-center gap-4">
-        <Link to="/dashboard" className="hover:underline">Dashboard</Link>
-        {token ? (
-          <button 
-            onClick={handleLogout} 
-            className="bg-red-500 px-3 py-1 rounded hover:bg-red-700"
-          >
-            Logout
-          </button>
-        ) : (
-          <>
-            <Link to="/login" className="hover:underline">Login</Link>
-            <Link to="/register" className="hover:underline">Register</Link>
-          </>
-        )}
+    <nav className="bg-indigo-600 shadow-lg p-4 flex justify-between items-center">
+      <h1 className="text-white text-xl font-bold tracking-wide">Coop Management</h1>
+      <div className="space-x-4">
+        <Link to="/dashboard" className="text-white hover:text-yellow-300 transition">Dashboard</Link>
+        <Link to="/contributions" className="text-white hover:text-yellow-300 transition">Contributions</Link>
+        <Link to="/loans" className="text-white hover:text-yellow-300 transition">Loans</Link>
+        <Link to="/admin-loan-approval" className="text-white hover:text-yellow-300 transition">Admin</Link>
+        <button
+          onClick={logout}
+          className="bg-yellow-400 px-3 py-1 rounded hover:bg-yellow-500 transition text-black"
+        >
+          Logout
+        </button>
       </div>
     </nav>
   );
