@@ -1,6 +1,6 @@
 import React from "react";
 import { useForm } from "react-hook-form";
-import api from "../api";
+import api from "../services/api";  // fixed import path
 
 export default function Login() {
   const { register, handleSubmit, formState: { errors } } = useForm();
