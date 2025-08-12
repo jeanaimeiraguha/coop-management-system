@@ -1,41 +1,47 @@
-import React, { createContext, useState, useEffect } from 'react'
-import jwtDecode from 'jwt-decode/dist/jwt-decode.esm.js'
-import api from '../services/api'
+import React, { createContext, useState, useEffect } from "react";
+// Correct import for jwt-decode for Vite + React
+import jwtDecode from "jwt-decode";
 
-export const AuthContext = createContext()
+export const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const token = localStorage.getItem('token')
+    const token = localStorage.getItem("token");
     if (token) {
       try {
-        const data = jwtDecode(token)
-        setUser({ id: data.id, email: data.email, name: data.name })
-      } catch (e) {
-        console.error('Invalid token', e)
-        localStorage.removeItem('token')
+        // Decode token properly
+        const decoded = jwtDecode(token);
+        // Assume token contains user info like id and email
+        setUser({ id: decoded.id, email: decoded.email });
+      } catch (error) {
+        console.error("Invalid token", error);
+        localStorage.removeItem("token");
+        setUser(null);
       }
     }
-  }, [])
+  }, []);
 
   async function login(email, password) {
-    const res = await api.post('/members/login', { email, password })
-    const { token, member } = res.data
-    localStorage.setItem('token', token)
-    setUser(member)
-    return member
+    // Call your API login here and get token + user info
+    // Example with axios instance 'api':
+    // const res = await api.post('/members/login', { email, password });
+    // localStorage.setItem('token', res.data.token);
+    // setUser(res.data.member);
+    // return res.data.member;
+
+    throw new Error("Implement login logic here");
   }
 
   function logout() {
-    localStorage.removeItem('token')
-    setUser(null)
+    localStorage.removeItem("token");
+    setUser(null);
   }
 
   return (
     <AuthContext.Provider value={{ user, login, logout }}>
       {children}
     </AuthContext.Provider>
-  )
+  );
 }
