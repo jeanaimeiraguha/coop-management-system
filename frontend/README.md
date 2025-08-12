@@ -41,5 +41,5 @@ A full-stack web application built with React, Node.js, Express, and MySQL to ma
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/yourusername/coop-management-system.git
+   git clone  https://github.com/jeanaimeiraguha/coop-management-system
    cd coop-management-system/backend
