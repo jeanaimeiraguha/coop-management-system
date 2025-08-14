@@ -1,256 +1,249 @@
-import express from "express";
-import mysql from "mysql";
-import cors from "cors";
-import dotenv from "dotenv";
-import bcrypt from "bcrypt";
-import jwt from "jsonwebtoken";
-
+import mysql from 'mysql2/promise';
+import dotenv from 'dotenv';
 dotenv.config();
 
-const app = express();
-app.use(cors());
-app.use(express.json());
-
-const db = mysql.createConnection({
+export const pool = mysql.createPool({
   host: process.env.DB_HOST,
+  port: process.env.DB_PORT,
   user: process.env.DB_USER,
   password: process.env.DB_PASSWORD,
   database: process.env.DB_NAME,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
 });
 
-db.connect((err) => {
-  if (err) {
-    console.error("DB connection error:", err);
-    process.exit(1);
-  }
-  console.log("MySQL connected");
-});
-
-const JWT_SECRET = process.env.JWT_SECRET || "secret";
-
-// --- Middleware to verify JWT ---
-function authenticateToken(req, res, next) {
-  const authHeader = req.headers["authorization"];
-  const token = authHeader && authHeader.split(" ")[1]; // Bearer TOKEN
-
-  if (!token) return res.status(401).json({ message: "No token provided" });
-
-  jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ message: "Invalid token" });
-    req.user = user;
-    next();
-  });
+export async function q(sql, params = []) {
+  const [rows] = await pool.execute(sql, params);
+  return rows;
 }
 
-// ===== MEMBER REGISTRATION =====
-app.post("/members/register", async (req, res) => {
-  const { email, name, phone, password } = req.body;
-
-  if (!email || !password)
-    return res.status(400).json({ message: "Email and password required" });
-
+export async function tx(fn) {
+  const conn = await pool.getConnection();
   try {
-    const hashedPassword = await bcrypt.hash(password, 10);
-
-    const sql = "INSERT INTO members (email, name, phone, password) VALUES (?, ?, ?, ?)";
-    db.query(sql, [email, name, phone, hashedPassword], (err, result) => {
-      if (err) {
-        if (err.code === "ER_DUP_ENTRY") {
-          return res.status(400).json({ message: "Email already exists" });
-        }
-        return res.status(500).json({ error: err.message });
-      }
-      res.json({ message: "Member registered", memberId: result.insertId });
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ===== MEMBER LOGIN =====
-app.post("/members/login", (req, res) => {
-  const { email, password } = req.body;
-
-  const sql = "SELECT * FROM members WHERE email = ?";
-  db.query(sql, [email], async (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (results.length === 0)
-      return res.status(401).json({ message: "Invalid credentials" });
-
-    const user = results[0];
-
-    const validPassword = await bcrypt.compare(password, user.password);
-    if (!validPassword)
-      return res.status(401).json({ message: "Invalid credentials" });
-
-    // Generate JWT token
-    const token = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, {
-      expiresIn: "8h",
-    });
-
-    res.json({ message: "Login successful", token, member: { id: user.id, name: user.name, email: user.email } });
-  });
-});
-
-// ===== CONTRIBUTIONS =====
-
-// Add contribution (protected)
-app.post("/contributions", authenticateToken, (req, res) => {
-  const memberId = req.user.id;
-  const { amount, note } = req.body;
-
-  if (!amount || amount <= 0)
-    return res.status(400).json({ message: "Valid amount is required" });
-
-  const sql = "INSERT INTO contributions (memberId, amount, note, date) VALUES (?, ?, ?, NOW())";
-  db.query(sql, [memberId, amount, note], (err, result) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ message: "Contribution added", contributionId: result.insertId });
-  });
-});
-
-// Get member contributions (protected)
-app.get("/contributions", authenticateToken, (req, res) => {
-  const memberId = req.user.id;
-
-  const sql = "SELECT * FROM contributions WHERE memberId = ? ORDER BY date DESC";
-  db.query(sql, [memberId], (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(results);
-  });
-});
-
-// ===== LOANS =====
-
-// Apply for loan (protected)
-app.post("/loans", authenticateToken, (req, res) => {
-  const memberId = req.user.id;
-  const { amount, termMonths, interestRate, note } = req.body;
-
-  if (!amount || amount <= 0)
-    return res.status(400).json({ message: "Valid loan amount required" });
-  if (!termMonths || termMonths <= 0)
-    return res.status(400).json({ message: "Valid term in months required" });
-
-  const sql = `INSERT INTO loans 
-    (memberId, amount, termMonths, interestRate, note, status, appliedDate) 
-    VALUES (?, ?, ?, ?, ?, 'pending', NOW())`;
-
-  db.query(sql, [memberId, amount, termMonths, interestRate, note], (err, result) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json({ message: "Loan applied", loanId: result.insertId });
-  });
-});
-
-// Get member loans (protected)
-app.get("/loans", authenticateToken, (req, res) => {
-  const memberId = req.user.id;
-  const sql = "SELECT * FROM loans WHERE memberId = ? ORDER BY appliedDate DESC";
-
-  db.query(sql, [memberId], (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(results);
-  });
-});
-
-// ===== ADMIN: Approve or Reject loans (protected admin route) =====
-
-// For demo, a simple admin check: check if req.user.email === admin@example.com
-// In real system, you’d have a roles system.
-
-function checkAdmin(req, res, next) {
-  if (req.user.email !== "admin@example.com") {
-    return res.status(403).json({ message: "Admin access only" });
-  }
-  next();
+    await conn.beginTransaction();
+    const result = await fn(conn);
+    await conn.commit();
+    return result;
+  } catch (e) {
+    await conn.rollback();
+    throw e;
+  } finally { conn.release(); }
 }
 
-app.put("/loans/:loanId/approve", authenticateToken, checkAdmin, (req, res) => {
-  const { loanId } = req.params;
-  const sql = "UPDATE loans SET status = 'approved', approvedDate = NOW() WHERE id = ? AND status = 'pending'";
+// ------------------------- src/utils/pagination.js -------------------------
+export function paged(req) {
+  const page = Math.max(1, Number(req.query.page) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 20));
+  const offset = (page - 1) * pageSize;
+  return { page, pageSize, offset };
+}
 
-  db.query(sql, [loanId], (err, result) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (result.affectedRows === 0)
-      return res.status(404).json({ message: "Loan not found or not pending" });
+// ------------------------- src/middleware/errors.js -------------------------
+export function notFound(_req, res, _next) { res.status(404).json({ message: 'Not Found' }); }
+export function errorHandler(err, _req, res, _next) {
+  console.error(err);
+  const status = err.status || 500;
+  res.status(status).json({ message: err.message || 'Server error' });
+}
 
-    res.json({ message: "Loan approved" });
+// ------------------------- src/middleware/auth.js -------------------------
+import jwt from 'jsonwebtoken';
+export function auth(required = true) {
+  return (req, res, next) => {
+    const header = req.headers.authorization || '';
+    const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+    if (!token) return required ? res.status(401).json({ message: 'No token' }) : next();
+    try { req.user = jwt.verify(token, process.env.JWT_SECRET); next(); }
+    catch { return res.status(401).json({ message: 'Invalid token' }); }
+  };
+}
+export function requireRole(...roles) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
+    if (!roles.includes(req.user.role)) return res.status(403).json({ message: 'Forbidden' });
+    next();
+  };
+}
+
+// ------------------------- src/utils/profit.js -------------------------
+export function computeDividends({ entries, totalProfit }) {
+  const totalBase = entries.reduce((s, e) => s + Number(e.baseValue || 0), 0);
+  return entries.map(e => {
+    const pct = totalBase > 0 ? Number(e.baseValue || 0) / totalBase : 0;
+    return { memberId: e.memberId, name: e.name, baseValue: Number(e.baseValue||0), percent: pct, dividend: Math.round(pct * totalProfit) };
   });
+}
+
+// ------------------------- src/routes/auth.js -------------------------
+import express from 'express';
+import Joi from 'joi';
+import bcrypt from 'bcrypt';
+import jwt from 'jsonwebtoken';
+import { q } from '../db.js';
+const router = express.Router();
+
+router.post('/register', async (req, res) => {
+  const schema = Joi.object({ name: Joi.string().min(2).required(), email: Joi.string().email().required(), password: Joi.string().min(6).required(), role: Joi.string().valid('admin','committee','member').default('member') });
+  const { value, error } = schema.validate(req.body);
+  if (error) return res.status(400).json({ message: error.message });
+  const exists = await q('SELECT id FROM users WHERE email=?', [value.email]);
+  if (exists.length) return res.status(409).json({ message: 'Email already used' });
+  const hash = await bcrypt.hash(value.password, 10);
+  const r = await q('INSERT INTO users(name,email,password_hash,role) VALUES (?,?,?,?)', [value.name, value.email, hash, value.role]);
+  res.status(201).json({ id: r.insertId, name: value.name, email: value.email, role: value.role });
 });
 
-app.put("/loans/:loanId/reject", authenticateToken, checkAdmin, (req, res) => {
-  const { loanId } = req.params;
-  const sql = "UPDATE loans SET status = 'rejected' WHERE id = ? AND status = 'pending'";
-
-  db.query(sql, [loanId], (err, result) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (result.affectedRows === 0)
-      return res.status(404).json({ message: "Loan not found or not pending" });
-
-    res.json({ message: "Loan rejected" });
-  });
+router.post('/login', async (req, res) => {
+  const schema = Joi.object({ email: Joi.string().email().required(), password: Joi.string().required() });
+  const { value, error } = schema.validate(req.body);
+  if (error) return res.status(400).json({ message: error.message });
+  const rows = await q('SELECT id,name,email,password_hash,role FROM users WHERE email=?', [value.email]);
+  if (!rows.length) return res.status(401).json({ message: 'Invalid credentials' });
+  const user = rows[0];
+  const ok = await bcrypt.compare(value.password, user.password_hash);
+  if (!ok) return res.status(401).json({ message: 'Invalid credentials' });
+  const token = jwt.sign({ id: user.id, role: user.role, name: user.name }, process.env.JWT_SECRET, { expiresIn: '7d' });
+  res.json({ token, user: { id: user.id, name: user.name, email: user.email, role: user.role } });
 });
 
-// ===== REPAYMENTS =====
-
-// Add repayment (protected)
-app.post("/loans/:loanId/repayments", authenticateToken, (req, res) => {
-  const memberId = req.user.id;
-  const { loanId } = req.params;
-  const { amount, date } = req.body;
-
-  if (!amount || amount <= 0)
-    return res.status(400).json({ message: "Valid amount is required" });
-
-  // Check loan ownership or admin access
-  const sqlCheck = "SELECT * FROM loans WHERE id = ?";
-
-  db.query(sqlCheck, [loanId], (err, loans) => {
-    if (err) return res.status(500).json({ error: err.message });
-    if (loans.length === 0) return res.status(404).json({ message: "Loan not found" });
-
-    const loan = loans[0];
-
-    if (loan.memberId !== memberId && req.user.email !== "admin@example.com") {
-      return res.status(403).json({ message: "You can only repay your own loans" });
-    }
-
-    // Insert repayment
-    const sqlInsert = "INSERT INTO repayments (loanId, amount, date) VALUES (?, ?, ?)";
-    db.query(sqlInsert, [loanId, amount, date || new Date()], (err2, result) => {
-      if (err2) return res.status(500).json({ error: err2.message });
-      res.json({ message: "Repayment recorded", repaymentId: result.insertId });
-    });
-  });
+router.get('/me', async (req,res) => {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) return res.status(200).json({ user: null });
+  try { const u = jwt.verify(token, process.env.JWT_SECRET); res.json({ user: u }); }
+  catch { res.status(200).json({ user: null }); }
 });
 
-// Get repayments for a loan (protected)
-app.get("/loans/:loanId/repayments", authenticateToken, (req, res) => {
-  const { loanId } = req.params;
+export default router;
 
-  const sql = "SELECT * FROM repayments WHERE loanId = ? ORDER BY date DESC";
-  db.query(sql, [loanId], (err, results) => {
-    if (err) return res.status(500).json({ error: err.message });
-    res.json(results);
-  });
+// ------------------------- src/routes/users.js -------------------------
+import express from 'express';
+import Joi from 'joi';
+import { q } from '../db.js';
+import { auth, requireRole } from '../middleware/auth.js';
+const router = express.Router();
+
+router.get('/', auth(), requireRole('admin'), async (req,res)=>{
+  const rows = await q('SELECT id,name,email,role,created_at FROM users ORDER BY id DESC');
+  res.json(rows);
 });
 
-// ===== PROFIT DISTRIBUTION SUMMARY (admin only) =====
-app.get("/profits/summary", authenticateToken, checkAdmin, (req, res) => {
-  const sqlContributions = "SELECT SUM(amount) as totalSavings FROM contributions";
-  const sqlLoans = "SELECT SUM(amount) as totalLoans FROM loans WHERE status = 'approved'";
-
-  db.query(sqlContributions, (err, contribRes) => {
-    if (err) return res.status(500).json({ error: err.message });
-    db.query(sqlLoans, (err2, loansRes) => {
-      if (err2) return res.status(500).json({ error: err2.message });
-      res.json({
-        totalSavings: contribRes[0].totalSavings || 0,
-        totalLoans: loansRes[0].totalLoans || 0,
-      });
-    });
-  });
+router.post('/', auth(), requireRole('admin'), async (req,res)=>{
+  const schema = Joi.object({ name: Joi.string().required(), email: Joi.string().email().required(), passwordHash: Joi.string().required(), role: Joi.string().valid('admin','committee','member').required()});
+  const { value, error } = schema.validate(req.body);
+  if (error) return res.status(400).json({ message: error.message });
+  const r = await q('INSERT INTO users(name,email,password_hash,role) VALUES (?,?,?,?)',[value.name,value.email,value.passwordHash,value.role]);
+  const row = await q('SELECT id,name,email,role,created_at FROM users WHERE id=?',[r.insertId]);
+  res.status(201).json(row[0]);
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`Server running on http://localhost:${PORT}`));
+router.put('/:id', auth(), requireRole('admin'), async (req,res)=>{
+  const { id } = req.params;
+  const schema = Joi.object({ name: Joi.string(), email: Joi.string().email(), role: Joi.string().valid('admin','committee','member') });
+  const { value, error } = schema.validate(req.body);
+  if (error) return res.status(400).json({ message: error.message });
+  const fields=[]; const params=[];
+  for (const [k,v] of Object.entries(value)) { fields.push(`${k}=?`); params.push(v); }
+  if (!fields.length) return res.status(400).json({ message: 'No fields' });
+  params.push(id);
+  await q(`UPDATE users SET ${fields.join(', ')} WHERE id=?`, params);
+  const row = await q('SELECT id,name,email,role,created_at FROM users WHERE id=?',[id]);
+  res.json(row[0]);
+});
+
+router.delete('/:id', auth(), requireRole('admin'), async (req,res)=>{
+  await q('DELETE FROM users WHERE id=?',[req.params.id]);
+  res.json({ success:true });
+});
+
+export default router;
+
+// ------------------------- src/routes/members.js -------------------------
+import express from 'express';
+import Joi from 'joi';
+import { q } from '../db.js';
+import { auth, requireRole } from '../middleware/auth.js';
+import { paged } from '../utils/pagination.js';
+const router = express.Router();
+
+router.get('/', auth(), async (req,res)=>{
+  const { page, pageSize, offset } = paged(req);
+  const rows = await q('SELECT SQL_CALC_FOUND_ROWS * FROM members ORDER BY id DESC LIMIT ? OFFSET ?', [pageSize, offset]);
+  const total = (await q('SELECT FOUND_ROWS() as t'))[0].t;
+  res.json({ items: rows, page, pageSize, total });
+});
+
+router.get('/:id', auth(), async (req,res)=>{
+  const rows = await q('SELECT * FROM members WHERE id=?',[req.params.id]);
+  if (!rows.length) return res.status(404).json({ message:'Member not found' });
+  res.json(rows[0]);
+});
+
+router.post('/', auth(), requireRole('admin','committee'), async (req,res)=>{
+  const schema = Joi.object({ name: Joi.string().required(), phone: Joi.string().required(), shares: Joi.number().integer().min(0).default(0), savings: Joi.number().min(0).default(0) });
+  const { value, error } = schema.validate(req.body);
+  if (error) return res.status(400).json({ message: error.message });
+  const r = await q('INSERT INTO members(name, phone, shares, savings) VALUES (?,?,?,?)',[value.name,value.phone,value.shares,value.savings]);
+  const row = await q('SELECT * FROM members WHERE id=?',[r.insertId]);
+  res.status(201).json(row[0]);
+});
+
+router.put('/:id', auth(), requireRole('admin','committee'), async (req,res)=>{
+  const schema = Joi.object({ name: Joi.string(), phone: Joi.string(), shares: Joi.number().integer().min(0), savings: Joi.number().min(0) });
+  const { value, error } = schema.validate(req.body);
+  if (error) return res.status(400).json({ message: error.message });
+  const fields=[]; const params=[]; for (const [k,v] of Object.entries(value)) { fields.push(`${k}=?`); params.push(v); }
+  if (!fields.length) return res.status(400).json({ message:'No fields' });
+  params.push(req.params.id);
+  await q(`UPDATE members SET ${fields.join(', ')} WHERE id=?`, params);
+  const row = await q('SELECT * FROM members WHERE id=?',[req.params.id]);
+  res.json(row[0]);
+});
+
+router.delete('/:id', auth(), requireRole('admin'), async (req,res)=>{
+  await q('DELETE FROM members WHERE id=?',[req.params.id]);
+  res.json({ success:true });
+});
+
+router.get('/:id/statement', auth(), async (req,res)=>{
+  const memberId = req.params.id;
+  const member = (await q('SELECT * FROM members WHERE id=?',[memberId]))[0];
+  if (!member) return res.status(404).json({ message:'Member not found' });
+  const contributions = await q('SELECT * FROM contributions WHERE member_id=? ORDER BY date DESC',[memberId]);
+  const loans = await q('SELECT * FROM loans WHERE member_id=? ORDER BY created_at DESC',[memberId]);
+  res.json({ member, contributions, loans });
+});
+
+export default router;
+
+// ------------------------- src/routes/contributions.js -------------------------
+import express from 'express';
+import Joi from 'joi';
+import { q } from '../db.js';
+import { auth, requireRole } from '../middleware/auth.js';
+import { paged } from '../utils/pagination.js';
+const router = express.Router();
+
+router.get('/', auth(), async (req,res)=>{
+  const { page, pageSize, offset } = paged(req);
+  const rows = await q(`SELECT SQL_CALC_FOUND_ROWS c.*, m.name as member_name FROM contributions c JOIN members m ON m.id=c.member_id ORDER BY c.date DESC, c.id DESC LIMIT ? OFFSET ?`, [pageSize, offset]);
+  const total = (await q('SELECT FOUND_ROWS() as t'))[0].t;
+  res.json({ items: rows, page, pageSize, total });
+});
+
+router.post('/', auth(), requireRole('admin','committee'), async (req,res)=>{
+  const schema = Joi.object({ memberId: Joi.number().required(), date: Joi.date().required(), amount: Joi.number().positive().required() });
+  const { value, error } = schema.validate(req.body);
+  if (error) return res.status(400).json({ message: error.message });
+  await q('INSERT INTO contributions(member_id, date, amount) VALUES (?,?,?)',[value.memberId,value.date,value.amount]);
+  await q('UPDATE members SET savings = savings + ? WHERE id=?',[value.amount, value.memberId]);
+  res.status(201).json({ success:true });
+});
+
+router.delete('/:id', auth(), requireRole('admin'), async (req,res)=>{
+  const row = (await q('SELECT member_id, amount FROM contributions WHERE id=?',[req.params.id]))[0];
+  if (row) await q('UPDATE members SET savings = savings - ? WHERE id=?',[row.amount, row.member_id]);
+  await q('DELETE FROM contributions WHERE id=?',[req.params.id]);
+  res.json({ success:true });
+});
